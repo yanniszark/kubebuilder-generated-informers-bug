@@ -25,6 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	kubeinformers "k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -34,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"time"
 )
 
 var log = logf.Log.WithName("controller")
@@ -78,6 +81,40 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	//////////////////////////////////////////
+	//          START CUSTOM CODE           //
+	// Try using a generated informer       //
+	// This code will make the manager exit //
+	//////////////////////////////////////////
+
+	kubeclient := kubernetes.NewForConfigOrDie(mgr.GetConfig())
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
+		kubeclient,
+		12*time.Hour,
+	)
+
+	// Instruct the manager to start the informers
+	err = mgr.Add(manager.RunnableFunc(func(s <-chan struct{}) error {
+		kubeInformerFactory.Start(s)
+		return nil
+	}))
+	if err != nil {
+		return err
+	}
+
+	// Watch Service Resources
+	err = c.Watch(
+		&source.Informer{Informer: kubeInformerFactory.Core().V1().Services().Informer()},
+		&handler.EnqueueRequestForObject{},
+	)
+	if err != nil {
+		return err
+	}
+
+	////////////////////////////////
+	//       END CUSTOM CODE      //
+	////////////////////////////////
+
 	return nil
 }
 
@@ -95,6 +132,7 @@ type ReconcileSloop struct {
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ships.k8s.io,resources=sloops,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ships.k8s.io,resources=sloops/status,verbs=get;update;patch
