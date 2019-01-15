@@ -81,4 +81,5 @@ func main() {
 		log.Error(err, "unable to run the manager")
 		os.Exit(1)
 	}
+	log.Info("Exiting manager...")
 }
